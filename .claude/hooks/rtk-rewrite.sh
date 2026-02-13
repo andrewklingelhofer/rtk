@@ -42,6 +42,10 @@ elif echo "$CMD" | grep -qE '^uv\s+pip\s+'; then
   REWRITTEN=$(echo "$CMD" | sed 's/^uv /rtk /')
 
 # --- Direct commands: just prepend rtk ---
+# NOTE: This broadly matches the top-level command (e.g. "git"), so ALL
+# subcommands get routed through rtk — even ones rtk doesn't specifically
+# filter (e.g. git checkout, go get). Those hit rtk's passthrough handlers
+# and run unmodified. Trivial overhead, keeps this hook simple.
 elif echo "$CMD" | grep -qE '^(git|gh|cargo|cat|grep|rg|ls|find|tree|diff|docker|kubectl|curl|wget|vitest|tsc|eslint|prettier|playwright|prisma|npm|pnpm|pytest|ruff|pip|go|golangci-lint)(\s|$)'; then
   REWRITTEN="rtk $CMD"
 
