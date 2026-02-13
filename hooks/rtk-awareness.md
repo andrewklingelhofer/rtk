@@ -26,6 +26,6 @@ which rtk             # Verify correct binary
 All other commands are automatically rewritten by the Claude Code hook.
 Example: `git status` → `rtk git status` (transparent, 0 tokens overhead)
 
-## Bypassing RTK (--raw)
+## Bypassing RTK
 
-Add `--raw` anywhere in a command to skip rtk filtering. **Only use this after** a previous rtk-filtered command returned truncated output that you suspect is hiding information needed to solve the current problem. Do not preemptively use `--raw`.
+If rtk filtering truncates output you need, use `rtk proxy <cmd>` to run the command unfiltered while still tracking usage.

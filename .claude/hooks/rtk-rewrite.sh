@@ -21,10 +21,9 @@ if [ -z "$CMD" ]; then
   exit 0
 fi
 
-# Skip heredocs and explicit raw-output requests
+# Skip heredocs
 case "$CMD" in
   *'<<'*) exit 0 ;;
-  *--raw*|RAW=1\ *) exit 0 ;;
 esac
 
 # Handle "cd <dir> && <command>" prefix that Claude Code adds when
@@ -34,6 +33,15 @@ ACTUAL_CMD="$CMD"
 if echo "$CMD" | grep -qF '&&'; then
   PREFIX=$(echo "$CMD" | sed -E 's/(.*&&[[:space:]]*).*/\1/')
   ACTUAL_CMD=$(echo "$CMD" | sed -E 's/.*&&[[:space:]]*//')
+fi
+
+# Handle "git -C <path> <subcmd>" by converting to "cd <path> && git <subcmd>"
+# rtk's git parser doesn't support -C, but the prefix approach works fine.
+if echo "$ACTUAL_CMD" | grep -qE '^git\s+-C\s+'; then
+  GIT_C_PATH=$(echo "$ACTUAL_CMD" | sed -E 's/^git\s+-C\s+(\S+)\s+.*/\1/')
+  GIT_REST=$(echo "$ACTUAL_CMD" | sed -E 's/^git\s+-C\s+\S+\s+//')
+  PREFIX="${PREFIX}cd $GIT_C_PATH && "
+  ACTUAL_CMD="git $GIT_REST"
 fi
 
 # Skip if the actual command already uses rtk
