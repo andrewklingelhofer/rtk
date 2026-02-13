@@ -37,9 +37,9 @@ fi
 
 # Handle "git -C <path> <subcmd>" by converting to "cd <path> && git <subcmd>"
 # rtk's git parser doesn't support -C, but the prefix approach works fine.
-if echo "$ACTUAL_CMD" | grep -qE '^git\s+-C\s+'; then
-  GIT_C_PATH=$(echo "$ACTUAL_CMD" | sed -E 's/^git\s+-C\s+(\S+)\s+.*/\1/')
-  GIT_REST=$(echo "$ACTUAL_CMD" | sed -E 's/^git\s+-C\s+\S+\s+//')
+if echo "$ACTUAL_CMD" | grep -qE '^git[[:space:]]+-C[[:space:]]+'; then
+  GIT_C_PATH=$(echo "$ACTUAL_CMD" | sed -E 's/^git[[:space:]]+-C[[:space:]]+([^[:space:]]+)[[:space:]]+.*/\1/')
+  GIT_REST=$(echo "$ACTUAL_CMD" | sed -E 's/^git[[:space:]]+-C[[:space:]]+[^[:space:]]+[[:space:]]+//')
   PREFIX="${PREFIX}cd $GIT_C_PATH && "
   ACTUAL_CMD="git $GIT_REST"
 fi
