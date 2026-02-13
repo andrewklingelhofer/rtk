@@ -491,26 +491,42 @@ The hook is included in this repository at `.claude/hooks/rtk-rewrite.sh`. To us
 
 ### Commands Rewritten
 
-| Raw Command | Rewritten To |
-|-------------|-------------|
-| `git status/diff/log/add/commit/push/pull/branch/fetch/stash` | `rtk git ...` |
-| `gh pr/issue/run` | `rtk gh ...` |
-| `cargo test/build/clippy` | `rtk cargo ...` |
-| `cat <file>` | `rtk read <file>` |
-| `rg/grep <pattern>` | `rtk grep <pattern>` |
-| `ls` | `rtk ls` |
-| `vitest/pnpm test` | `rtk vitest run` |
-| `tsc/pnpm tsc` | `rtk tsc` |
-| `eslint/pnpm lint` | `rtk lint` |
-| `prettier` | `rtk prettier` |
-| `playwright` | `rtk playwright` |
-| `prisma` | `rtk prisma` |
-| `docker ps/images/logs` | `rtk docker ...` |
-| `kubectl get/logs` | `rtk kubectl ...` |
-| `curl` | `rtk curl` |
-| `pnpm list/ls/outdated` | `rtk pnpm ...` |
+The hook simply prepends `rtk` to recognized commands — no renaming:
+
+```
+git status       → rtk git status
+cargo test       → rtk cargo test
+cat file.rs      → rtk cat file.rs
+grep pattern     → rtk grep pattern
+ls -la           → rtk ls -la
+```
+
+**Runner prefixes** (npx, pnpm-as-launcher, python -m, uv) are stripped since they're just launchers:
+
+```
+npx tsc          → rtk tsc
+pnpm lint        → rtk lint
+python -m pytest → rtk pytest
+uv pip list      → rtk pip list
+```
+
+The full list of matched commands: `git`, `gh`, `cargo`, `cat`, `grep`, `rg`, `ls`, `find`, `tree`, `diff`, `docker`, `kubectl`, `curl`, `wget`, `vitest`, `tsc`, `eslint`, `prettier`, `playwright`, `prisma`, `npm`, `pnpm`, `pytest`, `ruff`, `pip`, `go`, `golangci-lint`.
 
 Commands already using `rtk`, heredocs (`<<`), and unrecognized commands pass through unchanged.
+
+### Migrating Permissions
+
+The hook does **not** auto-approve rewritten commands — your existing Claude Code permission rules still apply. After installing, run the migration script to add `rtk`-prefixed versions of your existing rules:
+
+```bash
+# Preview what will be added (no changes made)
+./scripts/migrate-permissions.sh --dry-run
+
+# Apply — adds rtk-prefixed rules alongside existing ones
+./scripts/migrate-permissions.sh
+```
+
+Since every rewrite is just `rtk $command`, the migration is straightforward: for each `Bash(X:*)` rule, a `Bash(rtk X:*)` rule is added. Existing rules are never modified or removed. A backup is created at `~/.claude/settings.json.bak`.
 
 ### Alternative: Suggest Hook (Non-Intrusive)
 
