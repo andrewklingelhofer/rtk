@@ -90,6 +90,7 @@ enum Commands {
     },
 
     /// Read file with intelligent filtering
+    #[command(alias = "cat")]
     Read {
         /// File to read
         file: PathBuf,
@@ -226,6 +227,7 @@ enum Commands {
     },
 
     /// Compact grep - strips whitespace, truncates, groups by file
+    #[command(alias = "rg")]
     Grep {
         /// Pattern to search
         pattern: String,
@@ -376,6 +378,7 @@ enum Commands {
     },
 
     /// ESLint with grouped rule violations
+    #[command(alias = "eslint")]
     Lint {
         /// Linter arguments
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
