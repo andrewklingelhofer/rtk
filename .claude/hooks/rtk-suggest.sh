@@ -138,13 +138,13 @@ if [ -z "$SUGGESTION" ]; then
   exit 0
 fi
 
-# Output suggestion as system message
+# Output suggestion as system message (no permissionDecision — let the user's
+# existing permission rules decide whether to allow the command)
 jq -n \
   --arg suggestion "$SUGGESTION" \
   '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
-      "permissionDecision": "allow",
       "systemMessage": ("⚡ RTK available: `" + $suggestion + "` (60-90% token savings)")
     }
   }'
