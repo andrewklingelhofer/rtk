@@ -57,13 +57,14 @@ pub fn run(
         println!();
 
         if !summary.by_command.is_empty() {
+            let by_command = normalize_by_command(summary.by_command);
             println!("By Command:");
             println!("────────────────────────────────────────");
             println!(
                 "{:<20} {:>6} {:>10} {:>8} {:>8}",
                 "Command", "Count", "Saved", "Avg%", "Time"
             );
-            for (cmd, count, saved, pct, avg_time) in &summary.by_command {
+            for (cmd, count, saved, pct, avg_time) in &by_command {
                 let cmd_short = if cmd.len() > 18 {
                     format!("{}...", &cmd[..15])
                 } else {
@@ -95,10 +96,11 @@ pub fn run(
                 println!("────────────────────────────────────────");
                 for rec in recent {
                     let time = rec.timestamp.format("%m-%d %H:%M");
-                    let cmd_short = if rec.rtk_cmd.len() > 25 {
-                        format!("{}...", &rec.rtk_cmd[..22])
+                    let cmd_name = normalize_cmd_name(&rec.rtk_cmd);
+                    let cmd_short = if cmd_name.len() > 25 {
+                        format!("{}...", &cmd_name[..22])
                     } else {
-                        rec.rtk_cmd.clone()
+                        cmd_name
                     };
                     println!(
                         "{} {:<25} -{:.0}% ({})",
@@ -271,6 +273,68 @@ fn export_json(
     Ok(())
 }
 
+/// Normalize stored rtk_cmd names to canonical user-facing command names.
+///
+/// Historical entries may use internal names that don't match what users type.
+/// The hook now preserves original command names (cat, rg, eslint), so gain
+/// output should reflect those names.
+fn normalize_cmd_name(cmd: &str) -> String {
+    // Exact prefix replacements for renamed commands
+    if cmd == "rtk run-err" {
+        return "rtk err".to_string();
+    }
+    if cmd == "rtk run-test" {
+        return "rtk test".to_string();
+    }
+    // "rtk read" → "rtk cat" (preserving any suffix like " -")
+    if cmd == "rtk read" || cmd.starts_with("rtk read ") {
+        return cmd.replacen("rtk read", "rtk cat", 1);
+    }
+    cmd.to_string()
+}
+
+/// Re-aggregate by_command entries after normalization.
+///
+/// Multiple stored names may map to the same canonical name (e.g. "rtk read"
+/// and "rtk cat" both map to "rtk cat"). This merges their stats using
+/// weighted averages.
+fn normalize_by_command(
+    entries: Vec<(String, usize, usize, f64, u64)>,
+) -> Vec<(String, usize, usize, f64, u64)> {
+    use std::collections::HashMap;
+
+    // Preserve insertion order via a separate vec of keys
+    let mut order: Vec<String> = Vec::new();
+    // Accumulate: (total_count, total_saved, weighted_pct_sum, weighted_time_sum)
+    let mut merged: HashMap<String, (usize, usize, f64, f64)> = HashMap::new();
+
+    for (cmd, count, saved, pct, avg_time) in entries {
+        let canonical = normalize_cmd_name(&cmd);
+        let entry = merged.entry(canonical.clone()).or_insert_with(|| {
+            order.push(canonical);
+            (0, 0, 0.0, 0.0)
+        });
+        entry.0 += count;
+        entry.1 += saved;
+        entry.2 += pct * count as f64;
+        entry.3 += avg_time as f64 * count as f64;
+    }
+
+    order
+        .into_iter()
+        .map(|name| {
+            let (count, saved, wpct, wtime) = merged.remove(&name).unwrap();
+            let avg_pct = if count > 0 { wpct / count as f64 } else { 0.0 };
+            let avg_time = if count > 0 {
+                (wtime / count as f64) as u64
+            } else {
+                0
+            };
+            (name, count, saved, avg_pct, avg_time)
+        })
+        .collect()
+}
+
 fn export_csv(
     tracker: &Tracker,
     daily: bool,
@@ -341,4 +405,73 @@ fn export_csv(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_cmd_run_err() {
+        assert_eq!(normalize_cmd_name("rtk run-err"), "rtk err");
+    }
+
+    #[test]
+    fn test_normalize_cmd_run_test() {
+        assert_eq!(normalize_cmd_name("rtk run-test"), "rtk test");
+    }
+
+    #[test]
+    fn test_normalize_cmd_read_to_cat() {
+        assert_eq!(normalize_cmd_name("rtk read"), "rtk cat");
+    }
+
+    #[test]
+    fn test_normalize_cmd_read_stdin_to_cat() {
+        assert_eq!(normalize_cmd_name("rtk read -"), "rtk cat -");
+    }
+
+    #[test]
+    fn test_normalize_cmd_passthrough() {
+        // Commands that are already correct should pass through unchanged
+        assert_eq!(normalize_cmd_name("rtk git status"), "rtk git status");
+        assert_eq!(normalize_cmd_name("rtk cargo test"), "rtk cargo test");
+        assert_eq!(normalize_cmd_name("rtk cat"), "rtk cat");
+        assert_eq!(normalize_cmd_name("rtk ls"), "rtk ls");
+        assert_eq!(normalize_cmd_name("rtk eslint ."), "rtk eslint .");
+        assert_eq!(normalize_cmd_name("rtk grep"), "rtk grep");
+    }
+
+    #[test]
+    fn test_normalize_by_command_merges_duplicates() {
+        let entries = vec![
+            ("rtk run-err".to_string(), 10, 500, 80.0, 100),
+            ("rtk err".to_string(), 5, 300, 75.0, 50),
+        ];
+        let result = normalize_by_command(entries);
+        // Should merge into single "rtk err" entry
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "rtk err");
+        assert_eq!(result[0].1, 15); // count: 10 + 5
+        assert_eq!(result[0].2, 800); // saved: 500 + 300
+                                      // weighted avg pct: (80*10 + 75*5) / 15 = 1175/15 ≈ 78.33
+        assert!((result[0].3 - 78.33).abs() < 0.1);
+        // weighted avg time: (100*10 + 50*5) / 15 = 1250/15 ≈ 83
+        assert_eq!(result[0].4, 83);
+    }
+
+    #[test]
+    fn test_normalize_by_command_preserves_order() {
+        let entries = vec![
+            ("rtk git status".to_string(), 20, 1000, 70.0, 50),
+            ("rtk run-err".to_string(), 10, 500, 80.0, 100),
+            ("rtk ls".to_string(), 5, 200, 60.0, 30),
+        ];
+        let result = normalize_by_command(entries);
+        assert_eq!(result.len(), 3);
+        // Order preserved (sorted by saved desc from SQL)
+        assert_eq!(result[0].0, "rtk git status");
+        assert_eq!(result[1].0, "rtk err"); // normalized
+        assert_eq!(result[2].0, "rtk ls");
+    }
 }

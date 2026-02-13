@@ -50,7 +50,7 @@ pub fn run_err(command: &str, verbose: u8) -> Result<()> {
     }
 
     println!("{}", rtk);
-    timer.track(command, "rtk run-err", &raw, &rtk);
+    timer.track(command, "rtk err", &raw, &rtk);
     Ok(())
 }
 
@@ -83,7 +83,7 @@ pub fn run_test(command: &str, verbose: u8) -> Result<()> {
 
     let summary = extract_test_summary(&raw, command);
     println!("{}", summary);
-    timer.track(command, "rtk run-test", &raw, &summary);
+    timer.track(command, "rtk test", &raw, &summary);
     Ok(())
 }
 

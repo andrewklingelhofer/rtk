@@ -63,7 +63,7 @@ pub fn run(
     println!("{}", rtk_output);
     timer.track(
         &format!("cat {}", file.display()),
-        "rtk read",
+        "rtk cat",
         &content,
         &rtk_output,
     );
@@ -128,7 +128,7 @@ pub fn run_stdin(
     };
     println!("{}", rtk_output);
 
-    timer.track("cat - (stdin)", "rtk read -", &content, &rtk_output);
+    timer.track("cat - (stdin)", "rtk cat -", &content, &rtk_output);
     Ok(())
 }
 
