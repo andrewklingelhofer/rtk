@@ -21,14 +21,23 @@ if [ -z "$CMD" ]; then
   exit 0
 fi
 
-# Skip if already using rtk
-case "$CMD" in
-  rtk\ *|*/rtk\ *) exit 0 ;;
-esac
-
 # Skip heredocs
 case "$CMD" in
   *'<<'*) exit 0 ;;
+esac
+
+# Handle "cd <dir> && <command>" prefix that Claude Code adds when
+# specifying a working directory. We rewrite the last segment only.
+PREFIX=""
+ACTUAL_CMD="$CMD"
+if echo "$CMD" | grep -qF '&&'; then
+  PREFIX=$(echo "$CMD" | sed -E 's/(.*&&[[:space:]]*).*/\1/')
+  ACTUAL_CMD=$(echo "$CMD" | sed -E 's/.*&&[[:space:]]*//')
+fi
+
+# Skip if the actual command already uses rtk
+case "$ACTUAL_CMD" in
+  rtk\ *) exit 0 ;;
 esac
 
 REWRITTEN=""
@@ -36,38 +45,38 @@ SAFE=false  # Whether the original command is read-only / auto-allowed
 
 # --- Strip runner prefixes first, then prepend rtk ---
 # npx <tool> → rtk <tool> (npx is just a launcher)
-if echo "$CMD" | grep -qE '^npx\s+'; then
-  REWRITTEN=$(echo "$CMD" | sed 's/^npx /rtk /')
+if echo "$ACTUAL_CMD" | grep -qE '^npx\s+'; then
+  REWRITTEN=$(echo "$ACTUAL_CMD" | sed 's/^npx /rtk /')
 
 # pnpm as launcher for specific tools (not pnpm's own commands)
-elif echo "$CMD" | grep -qE '^pnpm\s+(tsc|lint|test|vitest|playwright)(\s|$)'; then
-  REWRITTEN=$(echo "$CMD" | sed 's/^pnpm /rtk /')
+elif echo "$ACTUAL_CMD" | grep -qE '^pnpm\s+(tsc|lint|test|vitest|playwright)(\s|$)'; then
+  REWRITTEN=$(echo "$ACTUAL_CMD" | sed 's/^pnpm /rtk /')
 
 # python -m pytest → rtk pytest
-elif echo "$CMD" | grep -qE '^python\s+-m\s+pytest(\s|$)'; then
-  REWRITTEN=$(echo "$CMD" | sed 's/^python -m /rtk /')
+elif echo "$ACTUAL_CMD" | grep -qE '^python\s+-m\s+pytest(\s|$)'; then
+  REWRITTEN=$(echo "$ACTUAL_CMD" | sed 's/^python -m /rtk /')
 
 # uv pip → rtk pip (uv is just a launcher for pip)
-elif echo "$CMD" | grep -qE '^uv\s+pip\s+'; then
-  REWRITTEN=$(echo "$CMD" | sed 's/^uv /rtk /')
+elif echo "$ACTUAL_CMD" | grep -qE '^uv\s+pip\s+'; then
+  REWRITTEN=$(echo "$ACTUAL_CMD" | sed 's/^uv /rtk /')
 
 # --- Direct commands: just prepend rtk ---
 # NOTE: This broadly matches the top-level command (e.g. "git"), so ALL
 # subcommands get routed through rtk — even ones rtk doesn't specifically
 # filter (e.g. git checkout, go get). Those hit rtk's passthrough handlers
 # and run unmodified. Trivial overhead, keeps this hook simple.
-elif echo "$CMD" | grep -qE '^(git|gh|cargo|cat|grep|rg|ls|find|tree|diff|docker|kubectl|curl|wget|vitest|tsc|eslint|prettier|playwright|prisma|npm|pnpm|pytest|ruff|pip|go|golangci-lint)(\s|$)'; then
-  REWRITTEN="rtk $CMD"
+elif echo "$ACTUAL_CMD" | grep -qE '^(git|gh|cargo|cat|grep|rg|ls|find|tree|diff|docker|kubectl|curl|wget|vitest|tsc|eslint|prettier|playwright|prisma|npm|pnpm|pytest|ruff|pip|go|golangci-lint)(\s|$)'; then
+  REWRITTEN="rtk $ACTUAL_CMD"
 
 # head -N file → rtk cat file --max-lines N (special arg transform)
-elif echo "$CMD" | grep -qE '^head\s+-[0-9]+\s+'; then
-  LINES=$(echo "$CMD" | sed -E 's/^head +-([0-9]+) +.+$/\1/')
-  FILE=$(echo "$CMD" | sed -E 's/^head +-[0-9]+ +(.+)$/\1/')
+elif echo "$ACTUAL_CMD" | grep -qE '^head\s+-[0-9]+\s+'; then
+  LINES=$(echo "$ACTUAL_CMD" | sed -E 's/^head +-([0-9]+) +.+$/\1/')
+  FILE=$(echo "$ACTUAL_CMD" | sed -E 's/^head +-[0-9]+ +(.+)$/\1/')
   REWRITTEN="rtk cat $FILE --max-lines $LINES"
   SAFE=true
-elif echo "$CMD" | grep -qE '^head\s+--lines=[0-9]+\s+'; then
-  LINES=$(echo "$CMD" | sed -E 's/^head +--lines=([0-9]+) +.+$/\1/')
-  FILE=$(echo "$CMD" | sed -E 's/^head +--lines=[0-9]+ +(.+)$/\1/')
+elif echo "$ACTUAL_CMD" | grep -qE '^head\s+--lines=[0-9]+\s+'; then
+  LINES=$(echo "$ACTUAL_CMD" | sed -E 's/^head +--lines=([0-9]+) +.+$/\1/')
+  FILE=$(echo "$ACTUAL_CMD" | sed -E 's/^head +--lines=[0-9]+ +(.+)$/\1/')
   REWRITTEN="rtk cat $FILE --max-lines $LINES"
   SAFE=true
 fi
@@ -77,12 +86,15 @@ if [ -z "$REWRITTEN" ]; then
   exit 0
 fi
 
+# Re-attach the prefix
+REWRITTEN="${PREFIX}${REWRITTEN}"
+
 # Determine if the original command is read-only (auto-allowed by Claude Code).
 # These get permissionDecision: allow since they were already allowed anyway.
 # Mutating commands (git push, git commit, curl, docker, etc.) go through
 # normal permission checks.
 if [ "$SAFE" = false ]; then
-  case "$CMD" in
+  case "$ACTUAL_CMD" in
     # Git read-only
     git\ status*|git\ log*|git\ diff*|git\ show*|git\ branch*|git\ stash\ list*|git\ remote*)
       SAFE=true ;;
