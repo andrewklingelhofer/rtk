@@ -21,9 +21,10 @@ if [ -z "$CMD" ]; then
   exit 0
 fi
 
-# Skip heredocs
+# Skip heredocs and explicit raw-output requests
 case "$CMD" in
   *'<<'*) exit 0 ;;
+  *--raw*|RAW=1\ *) exit 0 ;;
 esac
 
 # Handle "cd <dir> && <command>" prefix that Claude Code adds when

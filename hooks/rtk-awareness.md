@@ -26,4 +26,13 @@ which rtk             # Verify correct binary
 All other commands are automatically rewritten by the Claude Code hook.
 Example: `git status` → `rtk git status` (transparent, 0 tokens overhead)
 
-Refer to CLAUDE.md for full command reference.
+## Bypassing RTK
+
+When investigating issues where truncated output could hide relevant details, add `--raw` anywhere in the command to skip rtk and get full unfiltered output:
+
+```bash
+git diff --raw           # Full diff, no rtk truncation
+cargo test --raw         # Full test output
+```
+
+Use this when debugging failures where you need every line of output.
